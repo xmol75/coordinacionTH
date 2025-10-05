@@ -1,0 +1,1392 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Coordinación - Trasplante Hepático</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, updateDoc, onSnapshot, query, orderBy, addDoc, serverTimestamp, getDoc, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCZBR8tHpvgNayebtJh-yESOfFvln9dr2E",
+            authDomain: "coordinacionth-97c72.firebaseapp.com",
+            projectId: "coordinacionth-97c72",
+            storageBucket: "coordinacionth-97c72.firebasestorage.app",
+            messagingSenderId: "598740168465",
+            appId: "1:598740168465:web:2d5de8e28964274cf7a6b0"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        window.firebaseAuth = auth;
+        window.firebaseDb = db;
+        window.firebaseAuthFunctions = {
+            createUserWithEmailAndPassword,
+            signInWithEmailAndPassword,
+            sendEmailVerification,
+            sendPasswordResetEmail,
+            onAuthStateChanged,
+            signOut
+        };
+        window.firebaseDbFunctions = {
+            collection,
+            doc,
+            setDoc,
+            updateDoc,
+            onSnapshot,
+            query,
+            orderBy,
+            addDoc,
+            serverTimestamp,
+            getDoc,
+            getDocs,
+            deleteDoc
+        };
+
+        window.dispatchEvent(new Event('firebaseReady'));
+        
+        // Iniciar React solo después de que Firebase esté listo
+        window.startReactApp();
+    </script>
+
+    <script type="text/babel">
+        const { useState, useRef, useEffect } = React;
+
+        const TransplantCoordination = () => {
+            console.log('🚀 Componente React iniciado');
+            
+            const [user, setUser] = useState(null);
+            const [firebaseReady, setFirebaseReady] = useState(false);
+            const [initialLoading, setInitialLoading] = useState(true);
+            const [authMode, setAuthMode] = useState('login');
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [confirmPassword, setConfirmPassword] = useState('');
+            const [displayName, setDisplayName] = useState('');
+            const [authError, setAuthError] = useState('');
+            const [authSuccess, setAuthSuccess] = useState('');
+            const [formLoading, setFormLoading] = useState(false);
+            const [showPassword, setShowPassword] = useState(false);
+            const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+            const [showForgotPassword, setShowForgotPassword] = useState(false);
+            const [resetEmail, setResetEmail] = useState('');
+            const [showEndConfirmation, setShowEndConfirmation] = useState(false);
+            const [loading, setLoading] = useState(false);
+
+            const [activeCoordination, setActiveCoordination] = useState(null);
+            const [events, setEvents] = useState([]);
+            const [chatMessages, setChatMessages] = useState([]);
+            const [editingEvent, setEditingEvent] = useState(null);
+            const [chatMessage, setChatMessage] = useState('');
+            const [formData, setFormData] = useState({ time: '', responsible: '', comments: '' });
+            const chatEndRef = useRef(null);
+
+            const defaultEvents = [
+                { id: 1, name: 'Hora de donante en quirófano', status: 'pending', time: '', responsible: '', comments: '', icon: '🏥' },
+                { id: 2, name: 'Confirmación de donante en quirófano', status: 'pending', time: '', responsible: '', comments: '', icon: '✅' },
+                { id: 3, name: 'Inicio de la extracción', status: 'pending', time: '', responsible: '', comments: '', icon: '🔬' },
+                { id: 4, name: 'Valoración inicial del órgano', status: 'pending', time: '', responsible: '', comments: '', icon: '🔍' },
+                { id: 5, name: 'Inicio de la perfusión fría', status: 'pending', time: '', responsible: '', comments: '', icon: '❄️' },
+                { id: 6, name: 'Validez del órgano', status: 'pending', time: '', responsible: '', comments: '', icon: '✓' },
+                { id: 7, name: 'Órgano en nevera', status: 'pending', time: '', responsible: '', comments: '', icon: '🧊' },
+                { id: 8, name: 'Hora de receptor en quirófano', status: 'pending', time: '', responsible: '', comments: '', icon: '🏥' },
+                { id: 9, name: 'Confirmación de receptor en quirófano', status: 'pending', time: '', responsible: '', comments: '', icon: '✅' },
+                { id: 10, name: 'Hora 0', status: 'pending', time: '', responsible: '', comments: '', icon: '⏰' },
+                { id: 11, name: 'Inicio del implante', status: 'pending', time: '', responsible: '', comments: '', icon: '⚕️' }
+            ];
+
+            useEffect(() => {
+                const handleFirebaseReady = () => {
+                    setFirebaseReady(true);
+                };
+                window.addEventListener('firebaseReady', handleFirebaseReady);
+                return () => window.removeEventListener('firebaseReady', handleFirebaseReady);
+            }, []);
+
+            useEffect(() => {
+                if (firebaseReady && window.firebaseAuth) {
+                    console.log('Configurando listener de autenticación...');
+                    const unsubscribe = window.firebaseAuthFunctions.onAuthStateChanged(
+                        window.firebaseAuth,
+                        (currentUser) => {
+                            console.log('Estado de autenticación cambió:', currentUser);
+                            console.log('Usuario actual:', currentUser ? currentUser.email : 'No hay usuario');
+                            console.log('Email verificado:', currentUser ? currentUser.emailVerified : 'N/A');
+                            setUser(currentUser);
+                            if (currentUser && currentUser.displayName) {
+                                setDisplayName(currentUser.displayName);
+                            }
+                            setInitialLoading(false);
+                        }
+                    );
+                    return () => unsubscribe();
+                } else {
+                    setInitialLoading(false);
+                }
+            }, [firebaseReady]);
+
+            // Escuchar coordinación activa
+            useEffect(() => {
+                if (!firebaseReady || !user) return;
+
+                const coordinationRef = window.firebaseDbFunctions.doc(window.firebaseDb, 'coordination', 'active');
+                const unsubscribe = window.firebaseDbFunctions.onSnapshot(coordinationRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        setActiveCoordination(docSnap.data());
+                    } else {
+                        setActiveCoordination(null);
+                    }
+                });
+
+                return () => unsubscribe();
+            }, [firebaseReady, user]);
+
+            // Escuchar eventos en tiempo real
+            useEffect(() => {
+                if (!firebaseReady || !user || !activeCoordination) return;
+
+                const eventsRef = window.firebaseDbFunctions.collection(window.firebaseDb, 'coordination', 'active', 'events');
+                const unsubscribe = window.firebaseDbFunctions.onSnapshot(eventsRef, (snapshot) => {
+                    const eventsData = [];
+                    snapshot.forEach((doc) => {
+                        eventsData.push({ ...doc.data(), firestoreId: doc.id });
+                    });
+                    eventsData.sort((a, b) => a.id - b.id);
+                    setEvents(eventsData);
+                });
+
+                return () => unsubscribe();
+            }, [firebaseReady, user, activeCoordination]);
+
+            // Escuchar mensajes del chat en tiempo real
+            useEffect(() => {
+                if (!firebaseReady || !user || !activeCoordination) return;
+
+                const messagesRef = window.firebaseDbFunctions.collection(window.firebaseDb, 'coordination', 'active', 'messages');
+                const q = window.firebaseDbFunctions.query(messagesRef, window.firebaseDbFunctions.orderBy('timestamp', 'asc'));
+                
+                const unsubscribe = window.firebaseDbFunctions.onSnapshot(q, (snapshot) => {
+                    const messagesData = [];
+                    snapshot.forEach((doc) => {
+                        const data = doc.data();
+                        messagesData.push({
+                            id: doc.id,
+                            ...data,
+                            timestamp: data.timestamp ? new Date(data.timestamp.seconds * 1000).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : ''
+                        });
+                    });
+                    setChatMessages(messagesData);
+                });
+
+                return () => unsubscribe();
+            }, [firebaseReady, user, activeCoordination]);
+
+            useEffect(() => {
+                chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }, [chatMessages]);
+
+            const validatePassword = (pass) => {
+                const minLength = pass.length >= 8;
+                const hasUpperCase = /[A-Z]/.test(pass);
+                const hasLowerCase = /[a-z]/.test(pass);
+                const hasNumber = /[0-9]/.test(pass);
+                const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(pass);
+                return minLength && hasUpperCase && hasLowerCase && hasNumber && hasSpecialChar;
+            };
+
+            const validateEmail = (email) => {
+                return email.endsWith('@ssib.es');
+            };
+
+            const handleRegister = async (e) => {
+                e.preventDefault();
+                setAuthError('');
+                setAuthSuccess('');
+
+                if (!validateEmail(email)) {
+                    setAuthError('El correo debe ser corporativo (@ssib.es)');
+                    return;
+                }
+
+                if (!validatePassword(password)) {
+                    setAuthError('La contraseña no cumple los requisitos de seguridad');
+                    return;
+                }
+
+                if (password !== confirmPassword) {
+                    setAuthError('Las contraseñas no coinciden');
+                    return;
+                }
+
+                setFormLoading(true);
+
+                try {
+                    const userCredential = await window.firebaseAuthFunctions.createUserWithEmailAndPassword(
+                        window.firebaseAuth,
+                        email,
+                        password
+                    );
+
+                    await window.firebaseAuthFunctions.sendEmailVerification(userCredential.user);
+                    
+                    setAuthSuccess('✅ ¡Registro exitoso! IMPORTANTE: Hemos enviado un correo de verificación a ' + email + '. Debes verificar tu correo antes de poder iniciar sesión. Revisa tu bandeja de entrada y spam.');
+                    setAuthMode('login');
+                    setEmail('');
+                    setPassword('');
+                    setConfirmPassword('');
+                } catch (error) {
+                    if (error.code === 'auth/email-already-in-use') {
+                        setAuthError('Este correo ya está registrado');
+                    } else {
+                        setAuthError('Error al registrar: ' + error.message);
+                    }
+                } finally {
+                    setFormLoading(false);
+                }
+            };
+
+            const handleLogin = async (e) => {
+                e.preventDefault();
+                setAuthError('');
+                setAuthSuccess('');
+
+                if (!validateEmail(email)) {
+                    setAuthError('El correo debe ser corporativo (@ssib.es)');
+                    return;
+                }
+
+                setFormLoading(true);
+
+                try {
+                    console.log('Intentando iniciar sesión con:', email);
+                    const userCredential = await window.firebaseAuthFunctions.signInWithEmailAndPassword(
+                        window.firebaseAuth,
+                        email,
+                        password
+                    );
+
+                    console.log('Usuario autenticado:', userCredential.user);
+                    console.log('Email verificado:', userCredential.user.emailVerified);
+
+                    if (!userCredential.user.emailVerified) {
+                        setAuthError('⚠️ Debes verificar tu correo electrónico antes de iniciar sesión. Revisa tu bandeja de entrada (y spam) y haz click en el enlace de verificación que te enviamos.');
+                        await window.firebaseAuthFunctions.signOut(window.firebaseAuth);
+                        return;
+                    }
+
+                    console.log('Login exitoso, redirigiendo...');
+                    setAuthSuccess('✅ Inicio de sesión exitoso');
+                    setEmail('');
+                    setPassword('');
+                    
+                    // Actualizar el estado del usuario inmediatamente
+                    setUser(userCredential.user);
+                    setInitialLoading(false);
+                } catch (error) {
+                    console.error('Error en login:', error);
+                    if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
+                        setAuthError('❌ Correo o contraseña incorrectos');
+                    } else if (error.code === 'auth/invalid-credential') {
+                        setAuthError('❌ Credenciales inválidas. Verifica tu correo y contraseña.');
+                    } else if (error.code === 'auth/too-many-requests') {
+                        setAuthError('❌ Demasiados intentos fallidos. Espera unos minutos e inténtalo de nuevo.');
+                    } else {
+                        setAuthError('❌ Error al iniciar sesión: ' + error.message);
+                    }
+                } finally {
+                    setFormLoading(false);
+                }
+            };
+
+            const handleLogout = async () => {
+                try {
+                    await window.firebaseAuthFunctions.signOut(window.firebaseAuth);
+                } catch (error) {
+                    console.error('Error al cerrar sesión:', error);
+                }
+            };
+
+            const handleForgotPassword = async () => {
+                if (!resetEmail.trim()) {
+                    setAuthError('Por favor, introduce tu correo electrónico');
+                    return;
+                }
+
+                if (!validateEmail(resetEmail)) {
+                    setAuthError('El correo debe ser corporativo (@ssib.es)');
+                    return;
+                }
+
+                setFormLoading(true);
+                try {
+                    await window.firebaseAuthFunctions.sendPasswordResetEmail(window.firebaseAuth, resetEmail);
+                    setAuthSuccess('✅ Se ha enviado un correo para restablecer tu contraseña. Revisa tu bandeja de entrada.');
+                    setShowForgotPassword(false);
+                    setResetEmail('');
+                } catch (error) {
+                    setAuthError('Error al enviar correo de recuperación: ' + error.message);
+                } finally {
+                    setFormLoading(false);
+                }
+            };
+
+            const endCoordination = async () => {
+                if (!firebaseReady) return;
+
+                try {
+                    console.log('🛑 Finalizando coordinación...');
+                    
+                    // Eliminar la coordinación activa
+                    const coordinationRef = window.firebaseDbFunctions.doc(window.firebaseDb, 'coordination', 'active');
+                    const docSnap = await window.firebaseDbFunctions.getDoc(coordinationRef);
+                    
+                    if (docSnap.exists()) {
+                        // Primero eliminar eventos
+                        const eventsRef = window.firebaseDbFunctions.collection(window.firebaseDb, 'coordination', 'active', 'events');
+                        const eventsSnapshot = await window.firebaseDbFunctions.getDocs(eventsRef);
+                        const deletePromises = [];
+                        eventsSnapshot.forEach((doc) => {
+                            deletePromises.push(window.firebaseDbFunctions.deleteDoc(doc.ref));
+                        });
+                        await Promise.all(deletePromises);
+
+                        // Eliminar mensajes
+                        const messagesRef = window.firebaseDbFunctions.collection(window.firebaseDb, 'coordination', 'active', 'messages');
+                        const messagesSnapshot = await window.firebaseDbFunctions.getDocs(messagesRef);
+                        const deleteMsgPromises = [];
+                        messagesSnapshot.forEach((doc) => {
+                            deleteMsgPromises.push(window.firebaseDbFunctions.deleteDoc(doc.ref));
+                        });
+                        await Promise.all(deleteMsgPromises);
+
+                        // Finalmente eliminar la coordinación
+                        await window.firebaseDbFunctions.deleteDoc(coordinationRef);
+                        
+                        console.log('✅ Coordinación finalizada');
+                    }
+                    
+                    setShowEndConfirmation(false);
+                } catch (error) {
+                    console.error('Error al finalizar coordinación:', error);
+                    alert('Error al finalizar coordinación: ' + error.message);
+                }
+            };
+
+            const startNewCoordination = async () => {
+                if (!firebaseReady) return;
+
+                try {
+                    const coordinationRef = window.firebaseDbFunctions.doc(window.firebaseDb, 'coordination', 'active');
+                    await window.firebaseDbFunctions.setDoc(coordinationRef, {
+                        startedAt: window.firebaseDbFunctions.serverTimestamp(),
+                        startedBy: user?.email || 'unknown',
+                        active: true
+                    });
+
+                    // Crear eventos iniciales
+                    const eventsRef = window.firebaseDbFunctions.collection(window.firebaseDb, 'coordination', 'active', 'events');
+                    for (const event of defaultEvents) {
+                        await window.firebaseDbFunctions.setDoc(
+                            window.firebaseDbFunctions.doc(eventsRef, `event_${event.id}`),
+                            event
+                        );
+                    }
+
+                    // Mensaje de inicio en el chat
+                    const messagesRef = window.firebaseDbFunctions.collection(window.firebaseDb, 'coordination', 'active', 'messages');
+                    await window.firebaseDbFunctions.addDoc(messagesRef, {
+                        user: 'Sistema',
+                        message: `🚀 Coordinación iniciada por ${user?.email}`,
+                        timestamp: window.firebaseDbFunctions.serverTimestamp(),
+                        isSystem: true
+                    });
+                } catch (error) {
+                    console.error('Error al iniciar coordinación:', error);
+                    alert('Error al iniciar coordinación: ' + error.message);
+                }
+            };
+
+            const openEventModal = (event) => {
+                setEditingEvent(event);
+                setFormData({
+                    time: event.time || new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+                    responsible: event.responsible || displayName || user?.email || '',
+                    comments: event.comments || ''
+                });
+            };
+
+            const saveEvent = async () => {
+                if (!firebaseReady) return;
+
+                try {
+                    const eventRef = window.firebaseDbFunctions.doc(
+                        window.firebaseDb, 
+                        'coordination', 
+                        'active', 
+                        'events', 
+                        editingEvent.firestoreId
+                    );
+
+                    await window.firebaseDbFunctions.updateDoc(eventRef, {
+                        ...formData,
+                        status: 'completed'
+                    });
+
+                    // Añadir mensaje al chat
+                    const messagesRef = window.firebaseDbFunctions.collection(window.firebaseDb, 'coordination', 'active', 'messages');
+                    await window.firebaseDbFunctions.addDoc(messagesRef, {
+                        user: formData.responsible,
+                        message: `✓ ${editingEvent.name} completado`,
+                        timestamp: window.firebaseDbFunctions.serverTimestamp(),
+                        isSystem: true
+                    });
+
+                    setEditingEvent(null);
+                } catch (error) {
+                    console.error('Error al guardar evento:', error);
+                    alert('Error al guardar: ' + error.message);
+                }
+            };
+
+            const sendChatMessage = async () => {
+                if (!chatMessage.trim() || !firebaseReady) return;
+                
+                try {
+                    const messagesRef = window.firebaseDbFunctions.collection(window.firebaseDb, 'coordination', 'active', 'messages');
+                    await window.firebaseDbFunctions.addDoc(messagesRef, {
+                        user: displayName || user?.email || 'Usuario',
+                        message: chatMessage.trim(),
+                        timestamp: window.firebaseDbFunctions.serverTimestamp(),
+                        isSystem: false
+                    });
+                    setChatMessage('');
+                } catch (error) {
+                    console.error('Error al enviar mensaje:', error);
+                }
+            };
+
+            // Pantalla de carga inicial
+            if (initialLoading) {
+                return (
+                    <div style={{ 
+                        minHeight: '100vh',
+                        background: 'linear-gradient(to bottom right, #EFF6FF, #E0E7FF)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                    }}>
+                        <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🏥</div>
+                            <p style={{ color: '#6B7280', fontSize: '1.125rem' }}>Cargando...</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Pantalla de autenticación
+            if (!user) {
+                return (
+                    <div style={{ 
+                        minHeight: '100vh',
+                        background: 'linear-gradient(to bottom right, #EFF6FF, #E0E7FF)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '1rem'
+                    }}>
+                        <div style={{
+                            background: 'white',
+                            borderRadius: '0.5rem',
+                            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)',
+                            maxWidth: '28rem',
+                            width: '100%'
+                        }}>
+                            <div style={{ padding: '2rem' }}>
+                                <h1 style={{ fontSize: '1.875rem', fontWeight: 'bold', textAlign: 'center', marginBottom: '0.5rem' }}>
+                                    🏥 Coordinación Trasplante Hepático
+                                </h1>
+                                <p style={{ textAlign: 'center', color: '#6B7280', marginBottom: '0.5rem' }}>
+                                    {new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                                </p>
+                                <p style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '0.75rem', marginBottom: '2rem' }}>
+                                    Versión 2.0 (Actualizada)
+                                </p>
+
+                                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+                                    <button
+                                        onClick={() => {
+                                            setAuthMode('login');
+                                            setAuthError('');
+                                            setAuthSuccess('');
+                                        }}
+                                        style={{
+                                            flex: 1,
+                                            padding: '0.75rem',
+                                            background: authMode === 'login' ? '#3B82F6' : '#F3F4F6',
+                                            color: authMode === 'login' ? 'white' : '#374151',
+                                            border: 'none',
+                                            borderRadius: '0.5rem',
+                                            fontWeight: '600',
+                                            cursor: 'pointer',
+                                            fontSize: '1rem'
+                                        }}
+                                    >
+                                        Iniciar Sesión
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setAuthMode('register');
+                                            setAuthError('');
+                                            setAuthSuccess('');
+                                        }}
+                                        style={{
+                                            flex: 1,
+                                            padding: '0.75rem',
+                                            background: authMode === 'register' ? '#3B82F6' : '#F3F4F6',
+                                            color: authMode === 'register' ? 'white' : '#374151',
+                                            border: 'none',
+                                            borderRadius: '0.5rem',
+                                            fontWeight: '600',
+                                            cursor: 'pointer',
+                                            fontSize: '1rem'
+                                        }}
+                                    >
+                                        Registrarse
+                                    </button>
+                                </div>
+
+                                {authError && (
+                                    <div style={{
+                                        padding: '0.75rem',
+                                        background: '#FEE2E2',
+                                        border: '1px solid #EF4444',
+                                        borderRadius: '0.5rem',
+                                        color: '#991B1B',
+                                        marginBottom: '1rem',
+                                        fontSize: '0.875rem'
+                                    }}>
+                                        {authError}
+                                    </div>
+                                )}
+
+                                {authSuccess && (
+                                    <div style={{
+                                        padding: '0.75rem',
+                                        background: '#D1FAE5',
+                                        border: '1px solid #10B981',
+                                        borderRadius: '0.5rem',
+                                        color: '#065F46',
+                                        marginBottom: '1rem',
+                                        fontSize: '0.875rem'
+                                    }}>
+                                        {authSuccess}
+                                    </div>
+                                )}
+
+                                <form onSubmit={authMode === 'login' ? handleLogin : handleRegister}>
+                                    <div style={{ marginBottom: '1rem' }}>
+                                        <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>
+                                            Correo corporativo (@ssib.es)
+                                        </label>
+                                        <input
+                                            type="email"
+                                            value={email}
+                                            onChange={(e) => setEmail(e.target.value)}
+                                            placeholder="usuario@ssib.es"
+                                            required
+                                            style={{
+                                                width: '100%',
+                                                padding: '0.75rem',
+                                                border: '1px solid #D1D5DB',
+                                                borderRadius: '0.5rem',
+                                                fontSize: '1rem',
+                                                boxSizing: 'border-box'
+                                            }}
+                                        />
+                                    </div>
+
+                                    <div style={{ marginBottom: '1rem' }}>
+                                        <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>
+                                            Contraseña
+                                        </label>
+                                        <div style={{ position: 'relative' }}>
+                                            <input
+                                                type={showPassword ? 'text' : 'password'}
+                                                value={password}
+                                                onChange={(e) => setPassword(e.target.value)}
+                                                placeholder="••••••••"
+                                                required
+                                                style={{
+                                                    width: '100%',
+                                                    padding: '0.75rem',
+                                                    paddingRight: '3rem',
+                                                    border: '1px solid #D1D5DB',
+                                                    borderRadius: '0.5rem',
+                                                    fontSize: '1rem',
+                                                    boxSizing: 'border-box'
+                                                }}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowPassword(!showPassword)}
+                                                style={{
+                                                    position: 'absolute',
+                                                    right: '0.75rem',
+                                                    top: '50%',
+                                                    transform: 'translateY(-50%)',
+                                                    background: 'none',
+                                                    border: 'none',
+                                                    cursor: 'pointer',
+                                                    fontSize: '1.25rem',
+                                                    padding: '0.25rem',
+                                                    color: '#6B7280'
+                                                }}
+                                            >
+                                                {showPassword ? '🙈' : '👁️'}
+                                            </button>
+                                        </div>
+                                        {authMode === 'register' && (
+                                            <div style={{ fontSize: '0.75rem', color: '#6B7280', marginTop: '0.5rem', lineHeight: '1.6' }}>
+                                                <div>• Mínimo 8 caracteres</div>
+                                                <div>• Al menos 1 letra mayúscula</div>
+                                                <div>• Al menos 1 letra minúscula</div>
+                                                <div>• Al menos 1 número</div>
+                                                <div>• Al menos 1 símbolo (!@#$%&*)</div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {authMode === 'register' && (
+                                        <div style={{ marginBottom: '1rem' }}>
+                                            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>
+                                                Confirmar contraseña
+                                            </label>
+                                            <div style={{ position: 'relative' }}>
+                                                <input
+                                                    type={showConfirmPassword ? 'text' : 'password'}
+                                                    value={confirmPassword}
+                                                    onChange={(e) => setConfirmPassword(e.target.value)}
+                                                    placeholder="••••••••"
+                                                    required
+                                                    style={{
+                                                        width: '100%',
+                                                        padding: '0.75rem',
+                                                        paddingRight: '3rem',
+                                                        border: '1px solid #D1D5DB',
+                                                        borderRadius: '0.5rem',
+                                                        fontSize: '1rem',
+                                                        boxSizing: 'border-box'
+                                                    }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                                    style={{
+                                                        position: 'absolute',
+                                                        right: '0.75rem',
+                                                        top: '50%',
+                                                        transform: 'translateY(-50%)',
+                                                        background: 'none',
+                                                        border: 'none',
+                                                        cursor: 'pointer',
+                                                        fontSize: '1.25rem',
+                                                        padding: '0.25rem',
+                                                        color: '#6B7280'
+                                                    }}
+                                                >
+                                                    {showConfirmPassword ? '🙈' : '👁️'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <button
+                                        type="submit"
+                                        disabled={formLoading}
+                                        style={{
+                                            width: '100%',
+                                            padding: '0.75rem',
+                                            background: formLoading ? '#9CA3AF' : '#3B82F6',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '0.5rem',
+                                            fontWeight: '600',
+                                            cursor: formLoading ? 'not-allowed' : 'pointer',
+                                            fontSize: '1rem'
+                                        }}
+                                    >
+                                        {formLoading ? 'Procesando...' : authMode === 'login' ? 'Iniciar Sesión' : 'Registrarse'}
+                                    </button>
+
+                                    {authMode === 'login' && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowForgotPassword(true)}
+                                            style={{
+                                                width: '100%',
+                                                padding: '0.5rem',
+                                                background: 'transparent',
+                                                color: '#3B82F6',
+                                                border: 'none',
+                                                cursor: 'pointer',
+                                                fontSize: '0.875rem',
+                                                marginTop: '0.5rem',
+                                                textDecoration: 'underline'
+                                            }}
+                                        >
+                                            ¿Olvidaste tu contraseña?
+                                        </button>
+                                    )}
+                                </form>
+                            </div>
+                        </div>
+
+                        {/* Modal de recuperación de contraseña */}
+                        {showForgotPassword && (
+                            <div style={{
+                                position: 'fixed',
+                                inset: 0,
+                                background: 'rgba(0,0,0,0.5)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                padding: '1rem',
+                                zIndex: 100
+                            }}>
+                                <div style={{
+                                    background: 'white',
+                                    borderRadius: '0.5rem',
+                                    maxWidth: '28rem',
+                                    width: '100%',
+                                    boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)'
+                                }}>
+                                    <div style={{ padding: '1.5rem', borderBottom: '1px solid #E5E7EB' }}>
+                                        <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>
+                                            Recuperar Contraseña
+                                        </h3>
+                                    </div>
+
+                                    <div style={{ padding: '1.5rem' }}>
+                                        <p style={{ color: '#6B7280', marginBottom: '1rem', fontSize: '0.875rem' }}>
+                                            Introduce tu correo corporativo y te enviaremos un enlace para restablecer tu contraseña.
+                                        </p>
+
+                                        <input
+                                            type="email"
+                                            value={resetEmail}
+                                            onChange={(e) => setResetEmail(e.target.value)}
+                                            placeholder="usuario@ssib.es"
+                                            style={{
+                                                width: '100%',
+                                                padding: '0.75rem',
+                                                border: '1px solid #D1D5DB',
+                                                borderRadius: '0.5rem',
+                                                fontSize: '1rem',
+                                                boxSizing: 'border-box',
+                                                marginBottom: '1rem'
+                                            }}
+                                        />
+                                    </div>
+
+                                    <div style={{ padding: '1.5rem', borderTop: '1px solid #E5E7EB', display: 'flex', gap: '0.75rem' }}>
+                                        <button
+                                            onClick={() => {
+                                                setShowForgotPassword(false);
+                                                setResetEmail('');
+                                                setAuthError('');
+                                            }}
+                                            style={{
+                                                flex: 1,
+                                                padding: '0.75rem',
+                                                background: '#E5E7EB',
+                                                color: '#374151',
+                                                border: 'none',
+                                                borderRadius: '0.5rem',
+                                                fontWeight: '600',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            Cancelar
+                                        </button>
+                                        <button
+                                            onClick={handleForgotPassword}
+                                            disabled={formLoading}
+                                            style={{
+                                                flex: 1,
+                                                padding: '0.75rem',
+                                                background: formLoading ? '#9CA3AF' : '#3B82F6',
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '0.5rem',
+                                                fontWeight: '600',
+                                                cursor: formLoading ? 'not-allowed' : 'pointer'
+                                            }}
+                                        >
+                                            {formLoading ? 'Enviando...' : 'Enviar'}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            }
+
+            // Pantalla sin coordinación activa
+            if (!activeCoordination) {
+                return (
+                    <div style={{ minHeight: '100vh', background: 'linear-gradient(to bottom right, #EFF6FF, #E0E7FF)' }}>
+                        <div style={{ background: 'white', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', borderBottom: '4px solid #3B82F6' }}>
+                            <div style={{ maxWidth: '80rem', margin: '0 auto', padding: '1.5rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <h1 style={{ fontSize: '1.875rem', fontWeight: 'bold', marginBottom: '0.25rem' }}>
+                                            🏥 Coordinación Trasplante Hepático
+                                        </h1>
+                                        <p style={{ color: '#666', fontSize: '0.875rem' }}>
+                                            {new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                                        </p>
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <p style={{ fontSize: '0.875rem', color: '#374151', marginBottom: '0.5rem' }}>
+                                            {displayName || user?.email}
+                                        </p>
+                                        <button
+                                            onClick={handleLogout}
+                                            style={{
+                                                padding: '0.5rem 1rem',
+                                                background: '#EF4444',
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '0.375rem',
+                                                fontWeight: '600',
+                                                cursor: 'pointer',
+                                                fontSize: '0.875rem'
+                                            }}
+                                        >
+                                            Cerrar Sesión
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 'calc(100vh - 150px)' }}>
+                            <div style={{ textAlign: 'center', padding: '2rem' }}>
+                                <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🏥</div>
+                                <h2 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '1rem', color: '#374151' }}>
+                                    No hay coordinación activa
+                                </h2>
+                                <p style={{ color: '#6B7280', marginBottom: '2rem', fontSize: '1.125rem' }}>
+                                    Inicia una nueva coordinación de trasplante para comenzar
+                                </p>
+                                <button
+                                    onClick={startNewCoordination}
+                                    style={{
+                                        padding: '1rem 2rem',
+                                        background: '#10B981',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '0.5rem',
+                                        fontWeight: '700',
+                                        cursor: 'pointer',
+                                        fontSize: '1.125rem',
+                                        boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'
+                                    }}
+                                    onMouseOver={(e) => e.target.style.background = '#059669'}
+                                    onMouseOut={(e) => e.target.style.background = '#10B981'}
+                                >
+                                    🚀 Iniciar Coordinación de Trasplante
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Pantalla principal (con coordinación activa)
+            return (
+                <div style={{ minHeight: '100vh', background: 'linear-gradient(to bottom right, #EFF6FF, #E0E7FF)' }}>
+                    <div style={{ background: 'white', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', borderBottom: '4px solid #3B82F6' }}>
+                        <div style={{ maxWidth: '80rem', margin: '0 auto', padding: '1.5rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div>
+                                    <h1 style={{ fontSize: '1.875rem', fontWeight: 'bold', marginBottom: '0.25rem' }}>
+                                        🏥 Coordinación Trasplante Hepático
+                                    </h1>
+                                    <p style={{ color: '#666', fontSize: '0.875rem' }}>
+                                        {new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                                    </p>
+                                </div>
+                                <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                    <div>
+                                        <p style={{ fontSize: '0.875rem', color: '#374151', marginBottom: '0.5rem' }}>
+                                            {displayName || user?.email}
+                                        </p>
+                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                            <button
+                                                onClick={() => setShowEndConfirmation(true)}
+                                                style={{
+                                                    padding: '0.5rem 1rem',
+                                                    background: '#F59E0B',
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    borderRadius: '0.375rem',
+                                                    fontWeight: '600',
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.875rem'
+                                                }}
+                                            >
+                                                Finalizar Coordinación
+                                            </button>
+                                            <button
+                                                onClick={handleLogout}
+                                                style={{
+                                                    padding: '0.5rem 1rem',
+                                                    background: '#EF4444',
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    borderRadius: '0.375rem',
+                                                    fontWeight: '600',
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.875rem'
+                                                }}
+                                            >
+                                                Cerrar Sesión
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style={{ maxWidth: '80rem', margin: '0 auto', padding: '1.5rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem' }}>
+                            <div>
+                                <div style={{ background: 'white', borderRadius: '0.5rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', padding: '1.5rem' }}>
+                                    <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>
+                                        ⏱️ Timeline de Eventos
+                                    </h2>
+
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                        {events.map((event, index) => (
+                                            <div key={event.id} style={{ position: 'relative' }}>
+                                                {index < events.length - 1 && (
+                                                    <div style={{
+                                                        position: 'absolute',
+                                                        left: '1.5rem',
+                                                        top: '3.5rem',
+                                                        width: '2px',
+                                                        height: '2rem',
+                                                        background: event.status === 'completed' ? '#10B981' : '#D1D5DB'
+                                                    }} />
+                                                )}
+
+                                                <div
+                                                    onClick={() => event.status !== 'completed' && openEventModal(event)}
+                                                    style={{
+                                                        display: 'flex',
+                                                        gap: '1rem',
+                                                        padding: '1rem',
+                                                        borderRadius: '0.5rem',
+                                                        border: `2px solid ${event.status === 'completed' ? '#10B981' : '#D1D5DB'}`,
+                                                        background: event.status === 'completed' ? '#F0FDF4' : '#F9FAFB',
+                                                        cursor: event.status !== 'completed' ? 'pointer' : 'default',
+                                                        transition: 'all 0.2s'
+                                                    }}
+                                                    onMouseOver={(e) => {
+                                                        if (event.status !== 'completed') {
+                                                            e.currentTarget.style.borderColor = '#3B82F6';
+                                                            e.currentTarget.style.background = '#EFF6FF';
+                                                        }
+                                                    }}
+                                                    onMouseOut={(e) => {
+                                                        if (event.status !== 'completed') {
+                                                            e.currentTarget.style.borderColor = '#D1D5DB';
+                                                            e.currentTarget.style.background = '#F9FAFB';
+                                                        }
+                                                    }}
+                                                >
+                                                    <div style={{
+                                                        width: '3rem',
+                                                        height: '3rem',
+                                                        borderRadius: '50%',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        fontSize: '1.5rem',
+                                                        background: event.status === 'completed' ? '#10B981' : '#D1D5DB',
+                                                        color: 'white',
+                                                        flexShrink: 0
+                                                    }}>
+                                                        {event.status === 'completed' ? '✓' : event.icon}
+                                                    </div>
+
+                                                    <div style={{ flex: 1 }}>
+                                                        <h3 style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>{event.name}</h3>
+                                                        
+                                                        {event.status === 'completed' ? (
+                                                            <div style={{ fontSize: '0.875rem' }}>
+                                                                <p style={{ color: '#374151' }}>
+                                                                    <strong>Hora:</strong> {event.time} | <strong>Responsable:</strong> {event.responsible}
+                                                                </p>
+                                                                {event.comments && (
+                                                                    <p style={{ color: '#6B7280', fontStyle: 'italic', marginTop: '0.25rem' }}>
+                                                                        {event.comments}
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <p style={{ fontSize: '0.875rem', color: '#6B7280' }}>
+                                                                Click para registrar este evento
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div style={{ 
+                                    background: 'white', 
+                                    borderRadius: '0.5rem', 
+                                    boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', 
+                                    height: 'calc(100vh - 250px)',
+                                    display: 'flex',
+                                    flexDirection: 'column'
+                                }}>
+                                    <div style={{ padding: '1rem', borderBottom: '1px solid #E5E7EB' }}>
+                                        <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>💬 Chat de Coordinación</h2>
+                                        <p style={{ fontSize: '0.75rem', color: '#6B7280' }}>Comunicación entre equipos</p>
+                                    </div>
+
+                                    <div style={{ flex: 1, overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                        {chatMessages.length === 0 ? (
+                                            <div style={{ textAlign: 'center', color: '#9CA3AF', padding: '2rem' }}>
+                                                <p style={{ fontSize: '0.875rem' }}>No hay mensajes aún</p>
+                                            </div>
+                                        ) : (
+                                            chatMessages.map((msg) => (
+                                                <div
+                                                    key={msg.id}
+                                                    style={{
+                                                        padding: '0.75rem',
+                                                        borderRadius: '0.5rem',
+                                                        background: msg.isSystem ? '#EFF6FF' : '#F3F4F6',
+                                                        border: msg.isSystem ? '1px solid #BFDBFE' : 'none'
+                                                    }}
+                                                >
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                                                        <span style={{ fontWeight: '600', fontSize: '0.875rem' }}>{msg.user}</span>
+                                                        <span style={{ fontSize: '0.75rem', color: '#6B7280' }}>{msg.timestamp}</span>
+                                                    </div>
+                                                    <p style={{ fontSize: '0.875rem' }}>{msg.message}</p>
+                                                </div>
+                                            ))
+                                        )}
+                                        <div ref={chatEndRef} />
+                                    </div>
+
+                                    <div style={{ padding: '1rem', borderTop: '1px solid #E5E7EB' }}>
+                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                            <input
+                                                type="text"
+                                                value={chatMessage}
+                                                onChange={(e) => setChatMessage(e.target.value)}
+                                                onKeyPress={(e) => e.key === 'Enter' && sendChatMessage()}
+                                                placeholder="Escribe un mensaje..."
+                                                style={{
+                                                    flex: 1,
+                                                    padding: '0.5rem',
+                                                    border: '1px solid #D1D5DB',
+                                                    borderRadius: '0.5rem',
+                                                    fontSize: '0.875rem'
+                                                }}
+                                            />
+                                            <button
+                                                onClick={sendChatMessage}
+                                                disabled={!chatMessage.trim()}
+                                                style={{
+                                                    background: chatMessage.trim() ? '#3B82F6' : '#D1D5DB',
+                                                    color: 'white',
+                                                    padding: '0.5rem 1rem',
+                                                    borderRadius: '0.5rem',
+                                                    border: 'none',
+                                                    cursor: chatMessage.trim() ? 'pointer' : 'not-allowed',
+                                                    fontWeight: '600'
+                                                }}
+                                            >
+                                                Enviar
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {editingEvent && (
+                        <div style={{
+                            position: 'fixed',
+                            inset: 0,
+                            background: 'rgba(0,0,0,0.5)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '1rem',
+                            zIndex: 50
+                        }}>
+                            <div style={{
+                                background: 'white',
+                                borderRadius: '0.5rem',
+                                maxWidth: '28rem',
+                                width: '100%',
+                                boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)'
+                            }}>
+                                <div style={{ padding: '1.5rem', borderBottom: '1px solid #E5E7EB' }}>
+                                    <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>
+                                        {editingEvent.icon} Registrar Evento
+                                    </h3>
+                                </div>
+
+                                <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>
+                                            Evento
+                                        </label>
+                                        <p style={{ background: '#F9FAFB', padding: '0.75rem', borderRadius: '0.5rem' }}>
+                                            {editingEvent.name}
+                                        </p>
+                                    </div>
+
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>
+                                            Hora
+                                        </label>
+                                        <input
+                                            type="time"
+                                            value={formData.time}
+                                            onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                                            style={{
+                                                width: '100%',
+                                                padding: '0.75rem',
+                                                border: '1px solid #D1D5DB',
+                                                borderRadius: '0.5rem',
+                                                boxSizing: 'border-box'
+                                            }}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>
+                                            Responsable (tu email o nombre)
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={formData.responsible}
+                                            onChange={(e) => setFormData({ ...formData, responsible: e.target.value })}
+                                            placeholder={user?.email || 'Tu nombre'}
+                                            style={{
+                                                width: '100%',
+                                                padding: '0.75rem',
+                                                border: '1px solid #D1D5DB',
+                                                borderRadius: '0.5rem',
+                                                boxSizing: 'border-box'
+                                            }}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>
+                                            Comentarios (opcional)
+                                        </label>
+                                        <textarea
+                                            value={formData.comments}
+                                            onChange={(e) => setFormData({ ...formData, comments: e.target.value })}
+                                            rows="3"
+                                            placeholder="Añade observaciones relevantes..."
+                                            style={{
+                                                width: '100%',
+                                                padding: '0.75rem',
+                                                border: '1px solid #D1D5DB',
+                                                borderRadius: '0.5rem',
+                                                resize: 'vertical',
+                                                boxSizing: 'border-box'
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div style={{ padding: '1.5rem', borderTop: '1px solid #E5E7EB', display: 'flex', gap: '0.75rem' }}>
+                                    <button
+                                        onClick={() => setEditingEvent(null)}
+                                        style={{
+                                            flex: 1,
+                                            padding: '0.75rem',
+                                            background: '#E5E7EB',
+                                            color: '#374151',
+                                            border: 'none',
+                                            borderRadius: '0.5rem',
+                                            fontWeight: '600',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        onClick={saveEvent}
+                                        style={{
+                                            flex: 1,
+                                            padding: '0.75rem',
+                                            background: '#10B981',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '0.5rem',
+                                            fontWeight: '600',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        Guardar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Modal de confirmación para finalizar coordinación */}
+                    {showEndConfirmation && (
+                        <div style={{
+                            position: 'fixed',
+                            inset: 0,
+                            background: 'rgba(0,0,0,0.7)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '1rem',
+                            zIndex: 100
+                        }}>
+                            <div style={{
+                                background: 'white',
+                                borderRadius: '0.5rem',
+                                maxWidth: '32rem',
+                                width: '100%',
+                                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+                                border: '4px solid #EF4444'
+                            }}>
+                                <div style={{ padding: '1.5rem', borderBottom: '3px solid #FEE2E2', background: '#FEF2F2' }}>
+                                    <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#991B1B', textAlign: 'center' }}>
+                                        ⚠️ ADVERTENCIA CRÍTICA ⚠️
+                                    </h3>
+                                </div>
+
+                                <div style={{ padding: '2rem' }}>
+                                    <div style={{ 
+                                        background: '#FEE2E2', 
+                                        border: '2px solid #EF4444',
+                                        borderRadius: '0.5rem',
+                                        padding: '1.5rem',
+                                        marginBottom: '1.5rem'
+                                    }}>
+                                        <p style={{ color: '#991B1B', fontWeight: 'bold', marginBottom: '1rem', fontSize: '1.125rem' }}>
+                                            Estás a punto de FINALIZAR la coordinación activa
+                                        </p>
+                                        <p style={{ color: '#7F1D1D', marginBottom: '0.5rem' }}>
+                                            Esta acción:
+                                        </p>
+                                        <ul style={{ color: '#7F1D1D', paddingLeft: '1.5rem', lineHeight: '1.8' }}>
+                                            <li><strong>ELIMINARÁ TODOS LOS EVENTOS</strong> registrados</li>
+                                            <li><strong>BORRARÁ TODO EL HISTORIAL DEL CHAT</strong></li>
+                                            <li><strong>NO SE PUEDE DESHACER</strong></li>
+                                        </ul>
+                                    </div>
+
+                                    <p style={{ textAlign: 'center', fontSize: '1.125rem', fontWeight: 'bold', color: '#374151', marginBottom: '1.5rem' }}>
+                                        ¿Estás completamente seguro/a de que deseas continuar?
+                                    </p>
+                                </div>
+
+                                <div style={{ padding: '1.5rem', borderTop: '2px solid #E5E7EB', display: 'flex', gap: '1rem' }}>
+                                    <button
+                                        onClick={() => setShowEndConfirmation(false)}
+                                        style={{
+                                            flex: 1,
+                                            padding: '1rem',
+                                            background: '#10B981',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '0.5rem',
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer',
+                                            fontSize: '1rem'
+                                        }}
+                                    >
+                                        NO, CANCELAR
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            if (window.confirm('ÚLTIMA CONFIRMACIÓN: ¿Realmente quieres eliminar toda la coordinación? Esta acción es IRREVERSIBLE.')) {
+                                                endCoordination();
+                                            }
+                                        }}
+                                        style={{
+                                            flex: 1,
+                                            padding: '1rem',
+                                            background: '#EF4444',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '0.5rem',
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer',
+                                            fontSize: '1rem'
+                                        }}
+                                    >
+                                        SÍ, FINALIZAR Y BORRAR TODO
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        
+        // Función para iniciar React solo cuando Firebase esté listo
+        window.startReactApp = function() {
+            console.log('🎯 Iniciando aplicación React...');
+            root.render(<TransplantCoordination />);
+        };
+        
+        // Si Firebase ya está listo, iniciar inmediatamente
+        if (window.firebaseAuth && window.firebaseAuthFunctions) {
+            console.log('✅ Firebase ya disponible, iniciando app...');
+            window.startReactApp();
+        } else {
+            console.log('⏳ Esperando a Firebase...');
+        }
+    </script>
+</body>
+</html>
